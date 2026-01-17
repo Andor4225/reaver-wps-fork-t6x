@@ -50,7 +50,7 @@ int process_arguments(int argc, char **argv)
 	int long_opt_index = 0;
 	char bssid[MAC_ADDR_LEN] = { 0 };
 	char mac[MAC_ADDR_LEN] = { 0 };
-	char *short_options = "b:e:m:i:t:d:c:T:x:r:g:l:p:s:C:O:KZA5ELfnqvDShwN6JFuMW";
+	char *short_options = "b:e:m:i:t:d:c:T:x:r:g:l:p:s:C:O:B:KZA5ELfnqvDShwN6JFuMWa";
 	struct option long_options[] = {
 		{ "pixie-dust", no_argument, NULL, 'K' },
 		{ "interface", required_argument, NULL, 'i' },
@@ -86,6 +86,8 @@ int process_arguments(int argc, char **argv)
 		{ "output-file", required_argument, NULL, 'O'},
 		{ "mac-changer", no_argument, NULL, 'M' },
 		{ "follow", no_argument, NULL, 'W' },
+		{ "adaptive", no_argument, NULL, 'a' },
+		{ "max-backoff", required_argument, NULL, 'B' },
 		{ 0, 0, 0, 0 }
 	};
 
@@ -209,6 +211,14 @@ int process_arguments(int argc, char **argv)
 				break;
 			case 'W':
 				set_follow_channel(1);
+				break;
+			case 'a':
+				set_adaptive_delay(1);
+				set_base_lock_delay(get_lock_delay() ? get_lock_delay() : DEFAULT_LOCK_DELAY);
+				cprintf(INFO, "[+] Adaptive delay with exponential backoff enabled\n");
+				break;
+			case 'B':
+				set_max_backoff_factor(atoi(optarg));
 				break;
                         default:
                                 ret_val = EXIT_FAILURE;

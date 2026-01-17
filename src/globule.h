@@ -162,6 +162,14 @@ struct globals
 
     int follow_channel;     /* Follow AP channel changes during attack */
 
+    /* Performance optimization settings */
+    int adaptive_delay;           /* Enable adaptive delay based on AP response */
+    int consecutive_timeouts;     /* Track consecutive timeout count for backoff */
+    int consecutive_nacks;        /* Track consecutive NACK count for backoff */
+    int base_lock_delay;          /* Original lock delay for exponential backoff */
+    int current_lock_delay;       /* Current lock delay (may be increased by backoff) */
+    int max_backoff_factor;       /* Maximum backoff multiplier (default 8x) */
+
 };
 
 extern struct globals *globule;
@@ -278,4 +286,22 @@ void set_mac_changer(int value);
 int get_mac_changer(void);
 void set_follow_channel(int value);
 int get_follow_channel(void);
+void set_adaptive_delay(int value);
+int get_adaptive_delay(void);
+void set_consecutive_timeouts(int value);
+int get_consecutive_timeouts(void);
+void increment_consecutive_timeouts(void);
+void reset_consecutive_timeouts(void);
+void set_consecutive_nacks(int value);
+int get_consecutive_nacks(void);
+void increment_consecutive_nacks(void);
+void reset_consecutive_nacks(void);
+void set_base_lock_delay(int value);
+int get_base_lock_delay(void);
+void set_current_lock_delay(int value);
+int get_current_lock_delay(void);
+void set_max_backoff_factor(int value);
+int get_max_backoff_factor(void);
+int calculate_backoff_delay(void);
+void reset_backoff(void);
 #endif

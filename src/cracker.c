@@ -254,8 +254,18 @@ void crack()
 				}
 			}
 			if(locked_status == 1 && get_ignore_locks() == 0) {
-				cprintf(WARNING, "[!] WARNING: Detected AP rate limiting, waiting %d seconds before re-checking\n", get_lock_delay());
-				pcap_sleep(get_lock_delay());
+				int backoff_delay;
+				if(get_adaptive_delay()) {
+					/* Use exponential backoff for rate limiting evasion */
+					increment_consecutive_nacks();
+					backoff_delay = calculate_backoff_delay();
+					cprintf(WARNING, "[!] WARNING: Detected AP rate limiting (attempt %d), waiting %d seconds (exponential backoff)\n",
+						get_consecutive_nacks(), backoff_delay);
+				} else {
+					backoff_delay = get_lock_delay();
+					cprintf(WARNING, "[!] WARNING: Detected AP rate limiting, waiting %d seconds before re-checking\n", backoff_delay);
+				}
+				pcap_sleep(backoff_delay);
 				continue;
 			}
 			break;
@@ -311,23 +321,34 @@ void crack()
 
 		switch(result)
 		{
-			/* 
-			 * If the last pin attempt was rejected, increment 
-			 * the pin counter, clear the fail counter and move 
+			/*
+			 * If the last pin attempt was rejected, increment
+			 * the pin counter, clear the fail counter and move
 			 * on to the next pin.
 			 */
 			case KEY_REJECTED:
 				fail_count = 0;
 				pin_count++;
 				advance_pin_count();
+				/* Reset backoff on successful communication */
+				if(get_adaptive_delay()) {
+					reset_backoff();
+				}
 				break;
 			/* Got it!! */
 			case KEY_ACCEPTED:
+				if(get_adaptive_delay()) {
+					reset_backoff();
+				}
 				break;
 			/* Unexpected timeout or EAP failure...try this pin again */
 			default:
 				cprintf(VERBOSE, "[!] WPS transaction failed (code: 0x%.2X), re-trying last pin\n", result);
 				fail_count++;
+				/* Track timeouts for adaptive backoff */
+				if(get_adaptive_delay() && result == RX_TIMEOUT) {
+					increment_consecutive_timeouts();
+				}
 				break;
 		}
 

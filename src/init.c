@@ -151,7 +151,7 @@ struct wps_data *initialize_wps_data()
 	}
 	memset(wpsconf->wps, 0, sizeof(struct wps_context));
 
-	/* 
+	/*
 	 * Initialize the registrar sub-structure. This is necessary when calling
 	 * wpa_supplicant functions to build registrar response payloads.
 	 */
@@ -159,6 +159,9 @@ struct wps_data *initialize_wps_data()
 	if(wpsconf->wps->registrar == NULL)
 	{
 		cprintf(CRITICAL, "[X] ERROR: Failed to initialize registrar structure!\n");
+		free(wpsconf->wps);
+		wpsconf->wps = NULL;
+		goto end;
 	}
 
 	/* 

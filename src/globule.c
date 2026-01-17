@@ -549,10 +549,19 @@ struct wps_data *get_wps()
 
 void set_ap_htcaps(unsigned char *value, int len)
 {
-	free(globule->htcaps);
+	if(globule->htcaps)
+	{
+		free(globule->htcaps);
+		globule->htcaps = NULL;
+		globule->htcaps_len = 0;
+	}
+
 	globule->htcaps = malloc(len);
-	globule->htcaps_len = len;
-	memcpy(globule->htcaps, value, len);
+	if(globule->htcaps)
+	{
+		memcpy(globule->htcaps, value, len);
+		globule->htcaps_len = len;
+	}
 }
 
 unsigned char *get_ap_htcaps(int *len)
@@ -673,4 +682,109 @@ void set_follow_channel(int value)
 int get_follow_channel(void)
 {
 	return globule->follow_channel;
+}
+
+/* Adaptive delay and exponential backoff functions */
+void set_adaptive_delay(int value)
+{
+	globule->adaptive_delay = value;
+}
+int get_adaptive_delay(void)
+{
+	return globule->adaptive_delay;
+}
+
+void set_consecutive_timeouts(int value)
+{
+	globule->consecutive_timeouts = value;
+}
+int get_consecutive_timeouts(void)
+{
+	return globule->consecutive_timeouts;
+}
+void increment_consecutive_timeouts(void)
+{
+	globule->consecutive_timeouts++;
+}
+void reset_consecutive_timeouts(void)
+{
+	globule->consecutive_timeouts = 0;
+}
+
+void set_consecutive_nacks(int value)
+{
+	globule->consecutive_nacks = value;
+}
+int get_consecutive_nacks(void)
+{
+	return globule->consecutive_nacks;
+}
+void increment_consecutive_nacks(void)
+{
+	globule->consecutive_nacks++;
+}
+void reset_consecutive_nacks(void)
+{
+	globule->consecutive_nacks = 0;
+}
+
+void set_base_lock_delay(int value)
+{
+	globule->base_lock_delay = value;
+}
+int get_base_lock_delay(void)
+{
+	return globule->base_lock_delay;
+}
+
+void set_current_lock_delay(int value)
+{
+	globule->current_lock_delay = value;
+}
+int get_current_lock_delay(void)
+{
+	return globule->current_lock_delay;
+}
+
+void set_max_backoff_factor(int value)
+{
+	globule->max_backoff_factor = value;
+}
+int get_max_backoff_factor(void)
+{
+	return globule->max_backoff_factor ? globule->max_backoff_factor : 8;
+}
+
+/*
+ * Calculate exponential backoff delay based on consecutive failures.
+ * Uses 2^n backoff with a maximum multiplier.
+ */
+int calculate_backoff_delay(void)
+{
+	int base = get_base_lock_delay();
+	int failures = get_consecutive_timeouts() + get_consecutive_nacks();
+	int max_factor = get_max_backoff_factor();
+	int factor = 1;
+	int i;
+
+	if(base <= 0) base = DEFAULT_LOCK_DELAY;
+
+	/* Calculate 2^failures, capped at max_factor */
+	for(i = 0; i < failures && factor < max_factor; i++)
+	{
+		factor *= 2;
+	}
+	if(factor > max_factor) factor = max_factor;
+
+	return base * factor;
+}
+
+/*
+ * Reset all backoff counters and restore original lock delay
+ */
+void reset_backoff(void)
+{
+	reset_consecutive_timeouts();
+	reset_consecutive_nacks();
+	set_current_lock_delay(get_base_lock_delay());
 }
