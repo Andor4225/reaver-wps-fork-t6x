@@ -33,6 +33,7 @@
 
 #include "wpscrack.h"
 #include "iface.h"
+#include "cracker.h"
 
 extern const char* get_version(void);
 static int reaver_usage(char *prog_name);
@@ -113,10 +114,17 @@ int reaver_main(int argc, char **argv)
 	{
 		wps = get_wps();
 
-		cprintf(VERBOSE,  		    "[+] Pin cracked in %d seconds\n", (int) (end_time - start_time));
-		cprintf(CRITICAL, 		    "[+] WPS PIN: '%s'\n", get_pin());
-		if(wps->key)      cprintf(CRITICAL, "[+] WPA PSK: '%s'\n", wps->key);
-		if(wps->essid)    cprintf(CRITICAL, "[+] AP SSID: '%s'\n", wps->essid);
+		if(get_json_output())
+		{
+			output_json_result(1, start_time, end_time);
+		}
+		else
+		{
+			cprintf(VERBOSE,  		    "[+] Pin cracked in %d seconds\n", (int) (end_time - start_time));
+			cprintf(CRITICAL, 		    "[+] WPS PIN: '%s'\n", get_pin());
+			if(wps->key)      cprintf(CRITICAL, "[+] WPA PSK: '%s'\n", wps->key);
+			if(wps->essid)    cprintf(CRITICAL, "[+] AP SSID: '%s'\n", wps->essid);
+		}
 
 		/* Run user-supplied command */
 		if(get_exec_string())
@@ -126,9 +134,16 @@ int reaver_main(int argc, char **argv)
 
 		ret_val = EXIT_SUCCESS;
 	}
-	else 
+	else
 	{
-		cprintf(CRITICAL, "[-] Failed to recover WPA key\n");
+		if(get_json_output())
+		{
+			output_json_result(0, start_time, end_time);
+		}
+		else
+		{
+			cprintf(CRITICAL, "[-] Failed to recover WPA key\n");
+		}
 	}
 	
 	save_session();
@@ -183,6 +198,10 @@ static int reaver_usage(char *prog_name)
         fprintf(stderr, "\t-O, --output-file=<filename>    Write packets of interest into pcap file\n");
         fprintf(stderr, "\t-M, --mac-changer               Change the last digit of the MAC Address for each pin try [False]\n");
         fprintf(stderr, "\t-W, --follow                    Follow AP if it changes channels during attack [False]\n");
+        fprintf(stderr, "\t-a, --adaptive                  Use adaptive delay with exponential backoff [False]\n");
+        fprintf(stderr, "\t-B, --max-backoff=<factor>      Maximum backoff multiplier for adaptive delay [8]\n");
+        fprintf(stderr, "\t-j, --json                      Output status and results in JSON format [False]\n");
+        fprintf(stderr, "\t-I, --status-interval=<num>     Set status display interval (pin attempts) [%d]\n", DISPLAY_PIN_COUNT);
 
         fprintf(stderr, "\nExample:\n\t%s -i wlan0mon -b 00:90:4C:C1:AC:21 -vv\n\n", prog_name);
 

@@ -32,6 +32,7 @@
  */
 
 #include "globule.h"
+#include "cracker.h"
 
 struct globals *globule;
 
@@ -787,4 +788,233 @@ void reset_backoff(void)
 	reset_consecutive_timeouts();
 	reset_consecutive_nacks();
 	set_current_lock_delay(get_base_lock_delay());
+}
+
+/* Statistics and reporting functions */
+void set_json_output(int value)
+{
+	globule->json_output = value;
+}
+int get_json_output(void)
+{
+	return globule->json_output;
+}
+
+void set_status_interval(int value)
+{
+	if(value > 0)
+		globule->status_interval = value;
+}
+int get_status_interval(void)
+{
+	return globule->status_interval ? globule->status_interval : DISPLAY_PIN_COUNT;
+}
+
+void set_total_attempts(int value)
+{
+	globule->total_attempts = value;
+}
+int get_total_attempts(void)
+{
+	return globule->total_attempts;
+}
+void increment_total_attempts(void)
+{
+	globule->total_attempts++;
+}
+
+void set_successful_pins(int value)
+{
+	globule->successful_pins = value;
+}
+int get_successful_pins(void)
+{
+	return globule->successful_pins;
+}
+void increment_successful_pins(void)
+{
+	globule->successful_pins++;
+}
+
+void set_failed_attempts(int value)
+{
+	globule->failed_attempts = value;
+}
+int get_failed_attempts(void)
+{
+	return globule->failed_attempts;
+}
+void increment_failed_attempts(void)
+{
+	globule->failed_attempts++;
+}
+
+void set_lock_detections(int value)
+{
+	globule->lock_detections = value;
+}
+int get_lock_detections(void)
+{
+	return globule->lock_detections;
+}
+void increment_lock_detections(void)
+{
+	globule->lock_detections++;
+}
+
+void set_session_start(time_t value)
+{
+	globule->session_start = value;
+}
+time_t get_session_start(void)
+{
+	return globule->session_start;
+}
+
+/*
+ * Record a PIN attempt time and update moving average
+ */
+void record_pin_time(double seconds)
+{
+	int i;
+	double sum = 0;
+	int count = 0;
+
+	globule->last_pin_times[globule->pin_time_index] = seconds;
+	globule->pin_time_index = (globule->pin_time_index + 1) % 10;
+
+	/* Calculate moving average from available samples */
+	for(i = 0; i < 10; i++)
+	{
+		if(globule->last_pin_times[i] > 0)
+		{
+			sum += globule->last_pin_times[i];
+			count++;
+		}
+	}
+
+	if(count > 0)
+		globule->avg_pin_time = sum / count;
+}
+
+double get_avg_pin_time(void)
+{
+	return globule->avg_pin_time;
+}
+
+/*
+ * Calculate estimated time remaining in seconds
+ * Returns -1 if cannot be calculated
+ */
+int calculate_eta(void)
+{
+	int remaining_pins = 0;
+	double avg = get_avg_pin_time();
+
+	if(avg <= 0)
+		return -1;
+
+	if(get_key_status() == KEY1_WIP)
+	{
+		/* Still working on first half */
+		remaining_pins = (P1_SIZE - get_p1_index()) + P2_SIZE;
+	}
+	else if(get_key_status() == KEY2_WIP)
+	{
+		/* Working on second half */
+		remaining_pins = P2_SIZE - get_p2_index();
+	}
+	else
+	{
+		return 0; /* Done */
+	}
+
+	return (int)(remaining_pins * avg);
+}
+
+/*
+ * Output status in JSON format
+ */
+void output_json_status(int pin_count, time_t start_time)
+{
+	time_t now = time(NULL);
+	time_t elapsed = now - start_time;
+	int eta = calculate_eta();
+	float percentage = 0;
+	int attempts = 0;
+
+	if(get_key_status() == KEY1_WIP)
+	{
+		attempts = get_p1_index() + get_p2_index();
+	}
+	else if(get_key_status() == KEY2_WIP)
+	{
+		attempts = P1_SIZE + get_p2_index();
+	}
+	else if(get_key_status() == KEY_DONE)
+	{
+		attempts = P1_SIZE + P2_SIZE;
+	}
+
+	percentage = (float)(((float)attempts / (P1_SIZE + P2_SIZE)) * 100);
+
+	fprintf(stderr, "{\"type\":\"status\","
+		"\"progress\":%.2f,"
+		"\"attempts\":%d,"
+		"\"elapsed\":%ld,"
+		"\"avg_time\":%.2f,"
+		"\"eta\":%d,"
+		"\"p1_index\":%d,"
+		"\"p2_index\":%d,"
+		"\"key_status\":%d,"
+		"\"total_attempts\":%d,"
+		"\"successful\":%d,"
+		"\"failed\":%d,"
+		"\"locks\":%d}\n",
+		percentage,
+		pin_count,
+		(long)elapsed,
+		get_avg_pin_time(),
+		eta,
+		get_p1_index(),
+		get_p2_index(),
+		get_key_status(),
+		get_total_attempts(),
+		get_successful_pins(),
+		get_failed_attempts(),
+		get_lock_detections());
+}
+
+/*
+ * Output final result in JSON format
+ */
+void output_json_result(int success, time_t start_time, time_t end_time)
+{
+	struct wps_data *wps = get_wps();
+	time_t elapsed = end_time - start_time;
+
+	fprintf(stderr, "{\"type\":\"result\","
+		"\"success\":%s,"
+		"\"elapsed\":%ld,"
+		"\"total_attempts\":%d,"
+		"\"successful\":%d,"
+		"\"failed\":%d,"
+		"\"locks\":%d",
+		success ? "true" : "false",
+		(long)elapsed,
+		get_total_attempts(),
+		get_successful_pins(),
+		get_failed_attempts(),
+		get_lock_detections());
+
+	if(success && get_pin())
+	{
+		fprintf(stderr, ",\"pin\":\"%s\"", get_pin());
+		if(wps && wps->key)
+			fprintf(stderr, ",\"psk\":\"%s\"", wps->key);
+		if(wps && wps->essid)
+			fprintf(stderr, ",\"essid\":\"%s\"", wps->essid);
+	}
+
+	fprintf(stderr, "}\n");
 }

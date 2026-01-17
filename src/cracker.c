@@ -92,7 +92,7 @@ void crack()
 	char *pin = NULL;
 	int fail_count = 0, loop_count = 0, sleep_count = 0, assoc_fail_count = 0;
 	int pin_count = 0;
-	time_t start_time = 0;
+	time_t start_time = 0, pin_start_time = 0;
 	enum wps_result result = 0;
 
 	if(!get_iface())
@@ -255,6 +255,7 @@ void crack()
 			}
 			if(locked_status == 1 && get_ignore_locks() == 0) {
 				int backoff_delay;
+				increment_lock_detections();
 				if(get_adaptive_delay()) {
 					/* Use exponential backoff for rate limiting evasion */
 					increment_consecutive_nacks();
@@ -294,6 +295,10 @@ void crack()
 			cprintf(WARNING, "[+] Trying pin \"%s\"\n", pin);
 		}
 
+		/* Track PIN attempt timing for statistics */
+		pin_start_time = time(NULL);
+		increment_total_attempts();
+
 		/* 
 		 * Reassociate with the AP before each WPS exchange. This is necessary as some APs will
 		 * severely limit our pin attempt rate if we do not.
@@ -330,6 +335,9 @@ void crack()
 				fail_count = 0;
 				pin_count++;
 				advance_pin_count();
+				increment_successful_pins();
+				/* Record timing for ETA calculation */
+				record_pin_time((double)(time(NULL) - pin_start_time));
 				/* Reset backoff on successful communication */
 				if(get_adaptive_delay()) {
 					reset_backoff();
@@ -337,6 +345,8 @@ void crack()
 				break;
 			/* Got it!! */
 			case KEY_ACCEPTED:
+				increment_successful_pins();
+				record_pin_time((double)(time(NULL) - pin_start_time));
 				if(get_adaptive_delay()) {
 					reset_backoff();
 				}
@@ -345,6 +355,7 @@ void crack()
 			default:
 				cprintf(VERBOSE, "[!] WPS transaction failed (code: 0x%.2X), re-trying last pin\n", result);
 				fail_count++;
+				increment_failed_attempts();
 				/* Track timeouts for adaptive backoff */
 				if(get_adaptive_delay() && result == RX_TIMEOUT) {
 					increment_consecutive_timeouts();
@@ -360,11 +371,18 @@ void crack()
 			pcap_sleep(get_fail_delay());
 		}
 
-		/* Display status and save current session state every DISPLAY_PIN_COUNT loops */
-		if(loop_count == DISPLAY_PIN_COUNT)
+		/* Display status and save current session state at configurable interval */
+		if(loop_count >= get_status_interval())
 		{
 			save_session();
-			display_status(pin_count, start_time);
+			if(get_json_output())
+			{
+				output_json_status(pin_count, start_time);
+			}
+			else
+			{
+				display_status(pin_count, start_time);
+			}
 			loop_count = 0;
 		}
 
@@ -434,15 +452,17 @@ void display_status(int pin_count, time_t start_time)
 {
 	float percentage = 0;
 	int attempts = 0, average = 0;
+	int eta_seconds = 0;
 	time_t now = 0, diff = 0;
 	struct tm *tm_p = NULL;
-        char time_s[256] = { 0 };
+	char time_s[256] = { 0 };
+	char eta_s[64] = { 0 };
 
 	if(get_key_status() == KEY1_WIP)
 	{
 		attempts = get_p1_index() + get_p2_index();
 	}
-	/* 
+	/*
 	 * If we've found the first half of the key, then the entire key1 keyspace
 	 * has been exhausted/eliminated. Our output should reflect that.
 	 */
@@ -456,14 +476,14 @@ void display_status(int pin_count, time_t start_time)
 	}
 
 	percentage = (float) (((float) attempts / (P1_SIZE + P2_SIZE)) * 100);
-	
+
 	now = time(NULL);
 	diff = now - start_time;
 
-        tm_p = localtime(&now);
+	tm_p = localtime(&now);
 	if(tm_p)
 	{
-        	strftime(time_s, sizeof(time_s), TIME_FORMAT, tm_p);
+		strftime(time_s, sizeof(time_s), TIME_FORMAT, tm_p);
 	}
 	else
 	{
@@ -479,7 +499,22 @@ void display_status(int pin_count, time_t start_time)
 		average = 0;
 	}
 
-	cprintf(INFO, "[+] %.2f%% complete @ %s (%d seconds/pin)\n", percentage, time_s, average);
+	/* Calculate ETA */
+	eta_seconds = calculate_eta();
+	if(eta_seconds > 0)
+	{
+		int hours = eta_seconds / 3600;
+		int minutes = (eta_seconds % 3600) / 60;
+		int seconds = eta_seconds % 60;
+		if(hours > 0)
+			snprintf(eta_s, sizeof(eta_s), " ETA: %dh %dm %ds", hours, minutes, seconds);
+		else if(minutes > 0)
+			snprintf(eta_s, sizeof(eta_s), " ETA: %dm %ds", minutes, seconds);
+		else
+			snprintf(eta_s, sizeof(eta_s), " ETA: %ds", seconds);
+	}
+
+	cprintf(INFO, "[+] %.2f%% complete @ %s (%d seconds/pin)%s\n", percentage, time_s, average, eta_s);
 
 	return;
 }

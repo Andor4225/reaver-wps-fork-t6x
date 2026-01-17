@@ -170,6 +170,18 @@ struct globals
     int current_lock_delay;       /* Current lock delay (may be increased by backoff) */
     int max_backoff_factor;       /* Maximum backoff multiplier (default 8x) */
 
+    /* Statistics and reporting */
+    int json_output;              /* Enable JSON formatted output */
+    int status_interval;          /* Status display interval (default 10) */
+    int total_attempts;           /* Total PIN attempts made */
+    int successful_pins;          /* Successful PIN verifications (got response) */
+    int failed_attempts;          /* Failed attempts (timeouts, errors) */
+    int lock_detections;          /* Number of times AP lock was detected */
+    time_t session_start;         /* Session start timestamp */
+    double avg_pin_time;          /* Moving average seconds per PIN */
+    double last_pin_times[10];    /* Last 10 PIN attempt times for moving avg */
+    int pin_time_index;           /* Index into last_pin_times array */
+
 };
 
 extern struct globals *globule;
@@ -304,4 +316,27 @@ void set_max_backoff_factor(int value);
 int get_max_backoff_factor(void);
 int calculate_backoff_delay(void);
 void reset_backoff(void);
+void set_json_output(int value);
+int get_json_output(void);
+void set_status_interval(int value);
+int get_status_interval(void);
+void set_total_attempts(int value);
+int get_total_attempts(void);
+void increment_total_attempts(void);
+void set_successful_pins(int value);
+int get_successful_pins(void);
+void increment_successful_pins(void);
+void set_failed_attempts(int value);
+int get_failed_attempts(void);
+void increment_failed_attempts(void);
+void set_lock_detections(int value);
+int get_lock_detections(void);
+void increment_lock_detections(void);
+void set_session_start(time_t value);
+time_t get_session_start(void);
+void record_pin_time(double seconds);
+double get_avg_pin_time(void);
+int calculate_eta(void);
+void output_json_status(int pin_count, time_t start_time);
+void output_json_result(int success, time_t start_time, time_t end_time);
 #endif

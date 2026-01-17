@@ -50,7 +50,7 @@ int process_arguments(int argc, char **argv)
 	int long_opt_index = 0;
 	char bssid[MAC_ADDR_LEN] = { 0 };
 	char mac[MAC_ADDR_LEN] = { 0 };
-	char *short_options = "b:e:m:i:t:d:c:T:x:r:g:l:p:s:C:O:B:KZA5ELfnqvDShwN6JFuMWa";
+	char *short_options = "b:e:m:i:t:d:c:T:x:r:g:l:p:s:C:O:B:I:KZA5ELfnqvDShwN6JFuMWajP";
 	struct option long_options[] = {
 		{ "pixie-dust", no_argument, NULL, 'K' },
 		{ "interface", required_argument, NULL, 'i' },
@@ -88,6 +88,9 @@ int process_arguments(int argc, char **argv)
 		{ "follow", no_argument, NULL, 'W' },
 		{ "adaptive", no_argument, NULL, 'a' },
 		{ "max-backoff", required_argument, NULL, 'B' },
+		{ "json", no_argument, NULL, 'j' },
+		{ "status-interval", required_argument, NULL, 'I' },
+		{ "print-stats", no_argument, NULL, 'P' },
 		{ 0, 0, 0, 0 }
 	};
 
@@ -219,6 +222,15 @@ int process_arguments(int argc, char **argv)
 				break;
 			case 'B':
 				set_max_backoff_factor(atoi(optarg));
+				break;
+			case 'j':
+				set_json_output(1);
+				break;
+			case 'I':
+				set_status_interval(atoi(optarg));
+				break;
+			case 'P':
+				/* Print stats flag - handled at end */
 				break;
                         default:
                                 ret_val = EXIT_FAILURE;
