@@ -23,6 +23,18 @@ static int msleep(long millisecs) {
 
 struct pixie pixie = {0};
 
+/* Validates that a string contains only hexadecimal characters.
+ * Returns 1 if valid, 0 if invalid or NULL.
+ * This prevents command injection via shell metacharacters. */
+static int is_valid_hex_string(const char *str) {
+	if (!str) return 0;
+	while (*str) {
+		if (!isxdigit((unsigned char)*str)) return 0;
+		str++;
+	}
+	return 1;
+}
+
 void pixie_format(const unsigned char *in, unsigned len, char *outbuf) {
 	unsigned i;
 	char *out = outbuf;
@@ -73,6 +85,8 @@ static int pixie_run(char *pixiecmd, char *pinbuf, size_t *pinlen) {
 	return ret;
 }
 
+#include <pthread.h>
+
 static struct pixie_thread_data {
 	char cmd[4096];
 	char pinbuf[64];
@@ -80,12 +94,15 @@ static struct pixie_thread_data {
 } ptd;
 static volatile int thread_done;
 static int timeout_hit;
+static pthread_mutex_t pixie_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 static void* pixie_thread(void *data) {
 	unsigned long ret = pixie_run(ptd.cmd, ptd.pinbuf, &ptd.pinlen);
+	pthread_mutex_lock(&pixie_mutex);
 	thread_done = 1;
+	pthread_mutex_unlock(&pixie_mutex);
 	return (void*)ret;
 }
-#include <pthread.h>
 static int pixie_run_thread(void *ptr) {
 	/* to prevent from race conditions with 2 threads accessing stdout */
 	cprintf_mute();
@@ -97,11 +114,21 @@ static int pixie_run_thread(void *ptr) {
 	}
 	unsigned long long us_passed = 0,
 	timeout_usec = get_rx_timeout() * 1000000LL;
-	while(!thread_done) {
+	int done = 0;
+	while(!done) {
+		pthread_mutex_lock(&pixie_mutex);
+		done = thread_done;
+		pthread_mutex_unlock(&pixie_mutex);
+		if(done) break;
+
 		us_passed += 2000;
+		pthread_mutex_lock(&pixie_mutex);
 		if(!timeout_hit && (us_passed >= timeout_usec)) {
 			timeout_hit = 1;
+			pthread_mutex_unlock(&pixie_mutex);
 			send_wsc_nack(); /* sending silent nack */
+		} else {
+			pthread_mutex_unlock(&pixie_mutex);
 		}
 		msleep(2);
 	}
@@ -119,6 +146,18 @@ void pixie_attack(void) {
 	int dh_small = get_dh_small();
 
 	if(p->do_pixie) {
+		/* Validate all hex string inputs to prevent command injection */
+		if (!is_valid_hex_string(p->pke) ||
+		    !is_valid_hex_string(p->ehash1) ||
+		    !is_valid_hex_string(p->ehash2) ||
+		    !is_valid_hex_string(p->authkey) ||
+		    !is_valid_hex_string(p->enonce) ||
+		    (!dh_small && !is_valid_hex_string(p->pkr))) {
+			cprintf(CRITICAL, "[-] Invalid pixie data detected, aborting\n");
+			send_wsc_nack();
+			exit(1);
+		}
+
 		char uptime_str[64];
 		snprintf(uptime_str, sizeof(uptime_str), "-u %llu ",
 			(unsigned long long) globule->uptime);

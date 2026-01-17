@@ -101,6 +101,11 @@ int is_management_frame(
 ) {
 	struct radio_tap_header *rt_header = (void *) radio_header(packet, header->len);
 	size_t rt_header_len = end_le16toh(rt_header->len);
+
+	/* Validate rt_header_len doesn't exceed packet length to prevent buffer overread */
+	if(rt_header_len > header->len)
+		return 0;
+
 	if(header->len < BEACON_SIZE(rt_header_len))
 			return 0;
 

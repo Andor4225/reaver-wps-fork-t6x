@@ -76,6 +76,9 @@ void globule_deinit()
 		if(globule->static_p2) free(globule->static_p2);
 		if(globule->fp) fclose(globule->fp);
 		if(globule->exec_string) free(globule->exec_string);
+		if(globule->htcaps) free(globule->htcaps);
+		if(globule->ap_rates) free(globule->ap_rates);
+		if(globule->ap_ext_rates) free(globule->ap_ext_rates);
 
 		if(globule->output_fd != -1) close(globule->output_fd);
 

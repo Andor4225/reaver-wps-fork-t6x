@@ -68,7 +68,7 @@ int restore_session()
 	 */
 	if(get_session())
 	{
-		strcpy(file, get_session());
+		snprintf(file, sizeof(file), "%s", get_session());
 	}
 	else
 	{
@@ -209,7 +209,7 @@ int save_session()
         char file_name[FILENAME_MAX];
 	if(get_session())
 	{
-		strcpy(file_name, get_session());
+		snprintf(file_name, sizeof(file_name), "%s", get_session());
 	}
 	else
 	{

@@ -525,8 +525,10 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
 					char* vendor = get_vendor_string(get_ap_vendor(bssid));
 					char* sane_ssid = sanitize_string(ssid);
 
-					if(show_utf8_ssid && verifyssid(ssid))
-						strcpy(sane_ssid,ssid);
+					if(show_utf8_ssid && verifyssid(ssid)) {
+						free(sane_ssid);
+						sane_ssid = strdup(ssid);
+					}
 
 					if(wps_active(wps))
 					{
