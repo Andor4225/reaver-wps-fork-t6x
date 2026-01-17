@@ -32,9 +32,12 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <getopt.h>
 #include <ctype.h>
 #include <fcntl.h>
+#include <errno.h>
+#include <limits.h>
 #include "globule.h"
 #include "defs.h"
 #include "iface.h"
@@ -42,7 +45,49 @@
 #include "pixie.h"
 #include "misc.h"
 
-/* Processes Reaver command line options */
+/**
+ * Safely parse an integer from a string with validation.
+ *
+ * @param str    Input string to parse
+ * @param result Pointer to store the parsed integer
+ * @param min    Minimum allowed value
+ * @param max    Maximum allowed value
+ * @return       1 on success, 0 on failure
+ */
+static int safe_atoi(const char *str, int *result, int min, int max)
+{
+	char *endptr;
+	long val;
+
+	if (str == NULL || *str == '\0')
+		return 0;
+
+	errno = 0;
+	val = strtol(str, &endptr, 10);
+
+	/* Check for conversion errors */
+	if (errno == ERANGE || val > INT_MAX || val < INT_MIN)
+		return 0;
+
+	/* Check for trailing garbage */
+	if (*endptr != '\0')
+		return 0;
+
+	/* Check range */
+	if (val < min || val > max)
+		return 0;
+
+	*result = (int)val;
+	return 1;
+}
+
+/**
+ * Processes Reaver command line options.
+ *
+ * @param argc Argument count from main()
+ * @param argv Argument vector from main()
+ * @return     EXIT_SUCCESS on success, EXIT_FAILURE on error
+ */
 int process_arguments(int argc, char **argv)
 {
 	int ret_val = EXIT_SUCCESS;
@@ -133,14 +178,26 @@ int process_arguments(int argc, char **argv)
                                 set_mac((unsigned char *) &mac);
                                 break;
                         case 't':
-                                set_rx_timeout(atoi(optarg));
+				{
+					int timeout;
+					if (safe_atoi(optarg, &timeout, 1, 3600)) {
+						set_rx_timeout(timeout);
+					} else {
+						cprintf(CRITICAL, "[X] Invalid timeout value: %s (must be 1-3600)\n", optarg);
+						ret_val = EXIT_FAILURE;
+					}
+				}
                                 break;
                         case 'T':
                                 set_m57_timeout(strtof(optarg, NULL) * SEC_TO_US);
                                 break;
                         case 'c':
-				channel = strtod(optarg, NULL);
-                                set_fixed_channel(1);
+				if (safe_atoi(optarg, &channel, 1, 196)) {
+					set_fixed_channel(1);
+				} else {
+					cprintf(CRITICAL, "[X] Invalid channel value: %s (must be 1-196)\n", optarg);
+					ret_val = EXIT_FAILURE;
+				}
                                 break;
                         case '5':
                                 set_wifi_band(AN_BAND);
@@ -149,10 +206,26 @@ int process_arguments(int argc, char **argv)
                                 set_repeat_m6(1);
                                 break;
                         case 'd':
-                                set_delay(atoi(optarg));
+				{
+					int delay;
+					if (safe_atoi(optarg, &delay, 0, 3600)) {
+						set_delay(delay);
+					} else {
+						cprintf(CRITICAL, "[X] Invalid delay value: %s (must be 0-3600)\n", optarg);
+						ret_val = EXIT_FAILURE;
+					}
+				}
                                 break;
                         case 'l':
-                                set_lock_delay(atoi(optarg));
+				{
+					int lock_delay;
+					if (safe_atoi(optarg, &lock_delay, 0, 86400)) {
+						set_lock_delay(lock_delay);
+					} else {
+						cprintf(CRITICAL, "[X] Invalid lock-delay value: %s (must be 0-86400)\n", optarg);
+						ret_val = EXIT_FAILURE;
+					}
+				}
                                 break;
 			case 'p':
 				parse_static_pin(optarg);
@@ -171,13 +244,29 @@ int process_arguments(int argc, char **argv)
                                 set_ignore_locks(1);
                                 break;
                         case 'x':
-                                set_fail_delay(atoi(optarg));
+				{
+					int fail_delay;
+					if (safe_atoi(optarg, &fail_delay, 0, 86400)) {
+						set_fail_delay(fail_delay);
+					} else {
+						cprintf(CRITICAL, "[X] Invalid fail-wait value: %s (must be 0-86400)\n", optarg);
+						ret_val = EXIT_FAILURE;
+					}
+				}
                                 break;
                         case 'r':
                                 parse_recurring_delay(optarg);
                                 break;
                         case 'g':
-                                set_max_pin_attempts(atoi(optarg));
+				{
+					int max_attempts;
+					if (safe_atoi(optarg, &max_attempts, 1, 11000)) {
+						set_max_pin_attempts(max_attempts);
+					} else {
+						cprintf(CRITICAL, "[X] Invalid max-attempts value: %s (must be 1-11000)\n", optarg);
+						ret_val = EXIT_FAILURE;
+					}
+				}
                                 break;
 			case 'E':
                                 set_eap_terminate(1);
@@ -221,13 +310,29 @@ int process_arguments(int argc, char **argv)
 				cprintf(INFO, "[+] Adaptive delay with exponential backoff enabled\n");
 				break;
 			case 'B':
-				set_max_backoff_factor(atoi(optarg));
+				{
+					int backoff;
+					if (safe_atoi(optarg, &backoff, 1, 64)) {
+						set_max_backoff_factor(backoff);
+					} else {
+						cprintf(CRITICAL, "[X] Invalid max-backoff value: %s (must be 1-64)\n", optarg);
+						ret_val = EXIT_FAILURE;
+					}
+				}
 				break;
 			case 'j':
 				set_json_output(1);
 				break;
 			case 'I':
-				set_status_interval(atoi(optarg));
+				{
+					int interval;
+					if (safe_atoi(optarg, &interval, 1, 1000)) {
+						set_status_interval(interval);
+					} else {
+						cprintf(CRITICAL, "[X] Invalid status-interval value: %s (must be 1-1000)\n", optarg);
+						ret_val = EXIT_FAILURE;
+					}
+				}
 				break;
 			case 'P':
 				/* Print stats flag - handled at end */
@@ -245,7 +350,12 @@ int process_arguments(int argc, char **argv)
 	return ret_val;
 }
 
-/* Initialize some basic config settings */
+/**
+ * Initialize default configuration settings.
+ *
+ * Sets reasonable defaults for all configurable parameters before
+ * command line arguments are processed. Called once at program startup.
+ */
 void init_default_settings(void)
 {
 	set_log_file(stdout);
@@ -263,55 +373,106 @@ void init_default_settings(void)
 	set_mac_changer(0);
 }
 
-/* Parses the recurring delay optarg */
+/**
+ * Parse the recurring delay argument (format: "count:seconds").
+ *
+ * Sets a delay to occur every N pin attempts. For example, "-r 10:30"
+ * means sleep for 30 seconds after every 10 pin attempts.
+ *
+ * @param arg String in format "count:seconds" (e.g., "10:30")
+ */
 void parse_recurring_delay(char *arg)
 {
-        char *x = NULL, *y = NULL;
+	char *x = NULL, *y = NULL;
+	int count, delay;
 
-        x = strdup(arg);
-        y = strchr(x, ':');
+	if (!arg || *arg == '\0')
+		return;
 
-        if(y)
-        {
-                memset(y, 0, 1);
-                y++;
+	x = strdup(arg);
+	if (!x)
+		return;
 
-                set_recurring_delay_count(atoi(x));
-                set_recurring_delay(atoi(y));
-        }
+	y = strchr(x, ':');
 
-        free(x);
+	if(y)
+	{
+		*y = '\0';
+		y++;
+
+		if (safe_atoi(x, &count, 1, 10000) &&
+		    safe_atoi(y, &delay, 0, 86400))
+		{
+			set_recurring_delay_count(count);
+			set_recurring_delay(delay);
+		}
+		else
+		{
+			cprintf(CRITICAL, "[X] Invalid recurring-delay format: %s (expected count:seconds, e.g., 10:30)\n", arg);
+		}
+	}
+	else
+	{
+		cprintf(CRITICAL, "[X] Invalid recurring-delay format: %s (expected count:seconds, e.g., 10:30)\n", arg);
+	}
+
+	free(x);
 }
 
+/**
+ * Validate a WPS PIN string.
+ *
+ * Checks that the PIN contains only digits and, for 8-digit PINs,
+ * verifies the checksum digit is correct.
+ *
+ * @param pin The PIN string to validate
+ * @return    1 if valid, 0 if invalid
+ */
 int is_valid_pin(char *pin)
 {
-    if(!pin)
-        return 0;
+	if(!pin)
+		return 0;
 
-    int i;
-    for (i = 0; i < strlen(pin); i++)
-    {
-         if(!isdigit(pin[i]))
-             return 0;
-    }
-    if(strlen(pin) == 8)
-    {
-        char pin7[8] = { 0 };
-        char pin8[9] = { 0 };
-        memcpy((void *) &pin7, pin, sizeof(pin7)-1);
-        snprintf(pin8, 9, "%s%d", pin7, wps_pin_checksum(atoi(pin7)));
-        if (strcmp(pin, pin8) != 0)
-            return 0;
-    }
-    return 1;
+	int i;
+	int len = strlen(pin);
+
+	for (i = 0; i < len; i++)
+	{
+		if(!isdigit((unsigned char)pin[i]))
+			return 0;
+	}
+
+	if(len == 8)
+	{
+		char pin7[8] = { 0 };
+		char pin8[9] = { 0 };
+		memcpy((void *) &pin7, pin, sizeof(pin7)-1);
+		snprintf(pin8, 9, "%s%d", pin7, wps_pin_checksum(atoi(pin7)));
+		if (strcmp(pin, pin8) != 0)
+			return 0;
+	}
+	return 1;
 }
 
-/* Parse the WPS pin to use into p1 and p2 */
+/**
+ * Parse a WPS PIN and split into p1 (first half) and p2 (second half).
+ *
+ * Valid PIN formats:
+ * - 4 digits: First half only (p1)
+ * - 7 digits: Full PIN without checksum (p1 + p2)
+ * - 8 digits: Full PIN with checksum (p1 + p2, checksum verified)
+ * - Arbitrary string: Treated as raw PIN string mode
+ *
+ * @param pin The PIN string to parse
+ */
 void parse_static_pin(char *pin)
 {
 	int len = 0;
 	char p1[5] = { 0 };
 	char p2[4] = { 0 };
+
+	if (!pin)
+		return;
 
 	len = strlen(pin);
 

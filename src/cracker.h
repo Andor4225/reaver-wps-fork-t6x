@@ -43,11 +43,33 @@
 #include "pins.h"
 #include "argsparser.h"
 
+/* Status display interval (number of PIN attempts between updates) */
 #define DISPLAY_PIN_COUNT	5
+
+/* Time format for status display (ISO 8601 date + time) */
 #define TIME_FORMAT		"%F %T"
 
-void crack();
-void advance_pin_count();
+/* Time conversion constants */
+#define SECONDS_PER_HOUR	3600
+#define SECONDS_PER_MINUTE	60
+
+/**
+ * Main WPS PIN brute force attack function.
+ * Iterates through PIN combinations until success or exhaustion.
+ */
+void crack(void);
+
+/**
+ * Advance the PIN index counter based on current attack phase.
+ */
+void advance_pin_count(void);
+
+/**
+ * Display current attack progress and statistics.
+ *
+ * @param pin_count Number of unique PINs attempted
+ * @param start_time Unix timestamp when attack started
+ */
 void display_status(int pin_count, time_t start_time);
 
 #endif

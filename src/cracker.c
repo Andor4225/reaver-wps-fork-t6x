@@ -38,6 +38,13 @@
 #include "utils/vendor.h"
 #include "utils/endianness.h"
 
+/**
+ * Update the WPC (WPS PIN Cache) file with a newly found PIN.
+ *
+ * This function is called after a successful pixiewps attack to update
+ * the PIN queue arrays so subsequent attacks can benefit from the
+ * discovered PIN pattern.
+ */
 void update_wpc_from_pin(void) {
 	/* update WPC file with found pin */
 	pixie.do_pixie = 0;
@@ -64,6 +71,14 @@ void update_wpc_from_pin(void) {
 	}
 }
 
+/**
+ * Extract the AP uptime from a beacon frame timestamp.
+ *
+ * @param beacon Pointer to the beacon management frame
+ *
+ * The 802.11 beacon timestamp is a 64-bit value representing microseconds
+ * since the AP was started. This is used for pixiewps timing attacks.
+ */
 static void extract_uptime(const struct beacon_management_frame *beacon)
 {
 	uint64_t timestamp;
@@ -71,22 +86,44 @@ static void extract_uptime(const struct beacon_management_frame *beacon)
 	globule->uptime = end_le64toh(timestamp);
 }
 
-static void set_next_mac() {
+/**
+ * Generate and set the next MAC address for MAC address rotation.
+ *
+ * Increments the last 4 bytes of the MAC address while avoiding
+ * values of 0x00 and 0xFF in the last byte (which have special meaning
+ * in 802.11). This helps evade MAC-based rate limiting on some APs.
+ */
+static void set_next_mac(void)
+{
 	unsigned char newmac[6];
 	uint32_t l4b;
 	memcpy(newmac, get_mac(), 6);
-	memcpy(&l4b, newmac+2, 4);
+	memcpy(&l4b, newmac + 2, 4);
 	l4b = end_be32toh(l4b);
-	do ++l4b;
-	while ((l4b & 0xff) == 0 || (l4b & 0xff) == 0xff);
+	do {
+		++l4b;
+	} while ((l4b & 0xff) == 0 || (l4b & 0xff) == 0xff);
 	l4b = end_htobe32(l4b);
-	memcpy(newmac+2, &l4b, 4);
+	memcpy(newmac + 2, &l4b, 4);
 	set_mac(newmac);
 	cprintf(WARNING, "[+] Using MAC %s\n", mac2str(get_mac(), ':'));
 }
 
-/* Brute force all possible WPS pins for a given access point */
-void crack()
+/**
+ * Main WPS PIN brute force attack function.
+ *
+ * This is the primary attack loop that:
+ * 1. Initializes the wireless interface and captures beacons
+ * 2. Restores any previous session state
+ * 3. Iterates through possible PIN combinations
+ * 4. Handles rate limiting and AP lock detection
+ * 5. Saves session state for resume capability
+ *
+ * The attack exploits the WPS protocol design flaw where the 8-digit PIN
+ * is verified in two halves (4+3 digits + 1 checksum), reducing the keyspace
+ * from 10^8 to 10^4 + 10^3 = 11,000 attempts maximum.
+ */
+void crack(void)
 {
 	char *bssid = NULL;
 	char *pin = NULL;
@@ -163,27 +200,11 @@ void crack()
 			break;
 	}
 
-	/* I'm fairly certian there's a reason I put this in twice. Can't remember what it was now though... */
-	if(get_max_pin_attempts() == -1)
-	{
-		cprintf(CRITICAL, "[X] ERROR: This device has been blacklisted and is not supported.\n");
-		return;
-	}
-
-	#if 0
-	/* This initial association is just to make sure we can successfully associate */
-	while(!reassociate()) {
-		if(assoc_fail_count == MAX_ASSOC_FAILURES)
-		{
-			assoc_fail_count = 0;
-			cprintf(CRITICAL, "[!] WARNING: Failed to associate with %s (ESSID: %s)\n", bssid, get_ssid());
-		}
-		else
-		{
-			assoc_fail_count++;
-		}
-	}
-	#endif
+	/*
+	 * Note: Blacklist check was previously duplicated here but has been removed.
+	 * The check at the start of crack() is sufficient since get_max_pin_attempts()
+	 * is set during argument parsing and doesn't change during beacon processing.
+	 */
 
 	/* Used to calculate pin attempt rates */
 	start_time = time(NULL);
@@ -430,12 +451,17 @@ void crack()
 	}
 }
 
-/* 
- * Increment the index into the p1 or p2 array as appropriate.
- * If we're still trying to brute force the first half, increment p1.
- * If we're working on the second half, increment p2.
+/**
+ * Advance the PIN index counter based on current key status.
+ *
+ * WPS PIN cracking works in two phases:
+ * - KEY1_WIP: Trying first half (p1, 4 digits, 10000 combinations)
+ * - KEY2_WIP: Trying second half (p2, 3 digits + checksum, 1000 combinations)
+ *
+ * This function increments the appropriate index based on which phase
+ * the attack is currently in.
  */
-void advance_pin_count()
+void advance_pin_count(void)
 {
 	if(get_key_status() == KEY1_WIP)
 	{
@@ -447,7 +473,15 @@ void advance_pin_count()
 	}
 }
 
-/* Displays the status and rate of cracking */
+/**
+ * Display current attack progress and statistics.
+ *
+ * @param pin_count Number of unique PINs attempted so far
+ * @param start_time Unix timestamp when the attack started
+ *
+ * Shows: percentage complete, current time, average seconds per PIN,
+ * and estimated time remaining (ETA) based on moving average.
+ */
 void display_status(int pin_count, time_t start_time)
 {
 	float percentage = 0;
@@ -503,9 +537,9 @@ void display_status(int pin_count, time_t start_time)
 	eta_seconds = calculate_eta();
 	if(eta_seconds > 0)
 	{
-		int hours = eta_seconds / 3600;
-		int minutes = (eta_seconds % 3600) / 60;
-		int seconds = eta_seconds % 60;
+		int hours = eta_seconds / SECONDS_PER_HOUR;
+		int minutes = (eta_seconds % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE;
+		int seconds = eta_seconds % SECONDS_PER_MINUTE;
 		if(hours > 0)
 			snprintf(eta_s, sizeof(eta_s), " ETA: %dh %dm %ds", hours, minutes, seconds);
 		else if(minutes > 0)
