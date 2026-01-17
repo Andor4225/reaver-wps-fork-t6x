@@ -278,12 +278,12 @@ char *get_crack_progress(unsigned char *mac)
 
 				if (key_status == KEY1_WIP) {
 					attempts = p1_idx;
-					sprintf(crack_progress, "%.2lf", (attempts*100.0)/(P1_SIZE + P2_SIZE));
+					snprintf(crack_progress, 10, "%.2lf", (attempts*100.0)/(P1_SIZE + P2_SIZE));
 				} else if (key_status == KEY2_WIP) {
 					attempts = P1_SIZE + p2_idx;
-					sprintf(crack_progress, "%.2lf", (attempts*100.0)/(P1_SIZE + P2_SIZE));
+					snprintf(crack_progress, 10, "%.2lf", (attempts*100.0)/(P1_SIZE + P2_SIZE));
 				} else {
-					sprintf(crack_progress, "%.1lf", 100.0);
+					snprintf(crack_progress, 10, "%.1lf", 100.0);
 				}
 			} else {
 				if (crack_progress) {

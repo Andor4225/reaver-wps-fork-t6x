@@ -54,6 +54,13 @@ char *build_wps_pin()
 
                 free(key);
         }
+        else
+        {
+                /* Clean up partial allocation on failure */
+                if(pin) free(pin);
+                if(key) free(key);
+                pin = NULL;
+        }
 
         return pin;
 }
@@ -67,6 +74,13 @@ char *build_next_pin()
         char *pin = NULL;
         struct wps_data *wps = get_wps();
 
+        /* Validate wps structure before dereferencing */
+        if(!wps || !wps->wps || !wps->wps->registrar)
+        {
+                cprintf(CRITICAL, "[-] WPS data structure not initialized\n");
+                return NULL;
+        }
+
         /* Remove previous pin */
         wps_registrar_invalidate_pin(wps->wps->registrar, wps->uuid_e);
 
@@ -74,7 +88,18 @@ char *build_next_pin()
         if (get_pin_string_mode())
         {
                 /* Use an arbitrary string as WPS pin */
-                pin = strdup(get_static_p1());
+                const char *static_p1 = get_static_p1();
+                if(!static_p1)
+                {
+                        cprintf(CRITICAL, "[-] Static PIN not set\n");
+                        return NULL;
+                }
+                pin = strdup(static_p1);
+                if(!pin)
+                {
+                        cprintf(CRITICAL, "[-] Memory allocation failed\n");
+                        return NULL;
+                }
                 /* Add the new pin */
                 add_result = wps_registrar_add_pin(wps->wps->registrar, NULL, (const u8 *) pin, strlen(pin), 0);
         }

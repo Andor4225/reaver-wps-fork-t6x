@@ -157,7 +157,7 @@ int change_channel(int channel)
 	pid_t pid = fork();
 	if (!pid) {
 		char chan_arg[32];
-		sprintf(chan_arg, "-c%d", channel);
+		snprintf(chan_arg, sizeof(chan_arg), "-c%d", channel);
 		char* argv[] = {"/System/Library/PrivateFrameworks/Apple80211.framework/Resources/airport", chan_arg, NULL};
 		execve("/System/Library/PrivateFrameworks/Apple80211.framework/Resources/airport", argv, NULL);
 	}

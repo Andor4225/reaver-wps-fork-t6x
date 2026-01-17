@@ -469,6 +469,13 @@ enum wps_type process_wps_message(const void *data, size_t data_size)
         struct wfa_element_header element = { 0 };
         int i = 0, header_size = sizeof(struct wfa_element_header);
 
+	/* Validate WPS data structure */
+	if(!wps)
+	{
+		cprintf(CRITICAL, "[-] WPS data structure not available\n");
+		return type;
+	}
+
 	/* Shove data into a wpabuf structure for processing */
 	msg = wpabuf_alloc_copy(data, data_size);
 	if(msg)
@@ -511,7 +518,11 @@ enum wps_type process_wps_message(const void *data, size_t data_size)
                         /* Offset must include element length(s) */
                         i += element.length;
                 }
-	
+
+	}
+	else
+	{
+		cprintf(VERBOSE, "[!] Failed to allocate buffer for WPS message processing\n");
 	}
 
 	return type;

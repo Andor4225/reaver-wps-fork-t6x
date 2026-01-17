@@ -38,8 +38,9 @@ static int is_valid_hex_string(const char *str) {
 void pixie_format(const unsigned char *in, unsigned len, char *outbuf) {
 	unsigned i;
 	char *out = outbuf;
+	/* Each byte converts to 2 hex chars, so buffer needs len*2+1 bytes */
 	for(i = 0; i < len; i++, out+=2) {
-		sprintf(out, "%02x", in[i]);
+		snprintf(out, 3, "%02x", in[i]);
 	}
 	if(i) *out = 0;
 }

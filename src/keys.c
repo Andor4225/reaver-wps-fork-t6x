@@ -11059,7 +11059,7 @@ int get_k1_key_index(int value)
 	indexs[2] = 0; /* In k1, value in index 0 is 0.01% (1234) */
 	for (i=0; i<3; ++i){
 		if (indexs[i] >= 0 && indexs[i] < P1_SIZE){
-			sprintf(str_pin, "%04d", value);
+			snprintf(str_pin, sizeof(str_pin), "%04d", value);
 			if (strcmp(k1[indexs[i]].key, str_pin) == 0) {
 				return indexs[i];
 			}
@@ -11087,7 +11087,7 @@ int get_k2_key_index(int value)
 	indexs[2] = 0; /* In k2, value in index 0 is 0.1% (567) */
 	for (i=0; i<3; ++i){
 		if (indexs[i] >= 0 && indexs[i] < P2_SIZE){
-			sprintf(str_pin, "%03d", value);
+			snprintf(str_pin, sizeof(str_pin), "%03d", value);
 			if (strcmp(k2[indexs[i]].key, str_pin) == 0) {
 				return indexs[i];
 			}

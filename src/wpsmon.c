@@ -460,6 +460,11 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
 	   !is_target(frame_header)) goto end;
 
 	wps = malloc(sizeof(struct libwps_data));
+	if(!wps)
+	{
+		cprintf(CRITICAL, "[-] Memory allocation failed for WPS data\n");
+		goto end;
+	}
 	memset(wps, 0, sizeof(struct libwps_data));
 
 
