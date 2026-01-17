@@ -108,6 +108,73 @@ int read_iface_mac()
 #endif
 
 /*
+ * IEEE 802.11 Channel to Frequency conversion
+ * Supports 2.4GHz, 5GHz, and 6GHz bands per IEEE 802.11-2020
+ */
+int ieee80211_channel_to_frequency(int channel, int band)
+{
+	/* 2.4 GHz band (802.11b/g/n) */
+	if (band == BG_BAND || (channel >= 1 && channel <= 14)) {
+		if (channel >= 1 && channel <= 13)
+			return 2407 + channel * 5;
+		if (channel == 14)
+			return 2484;
+	}
+
+	/* 5 GHz band (802.11a/n/ac/ax) */
+	if (band == AN_BAND || (channel >= 32 && channel <= 196)) {
+		if (channel >= 32 && channel <= 68)
+			return 5000 + channel * 5;  /* UNII-1 and UNII-2A */
+		if (channel >= 96 && channel <= 144)
+			return 5000 + channel * 5;  /* UNII-2C (DFS) */
+		if (channel >= 149 && channel <= 177)
+			return 5000 + channel * 5;  /* UNII-3 */
+		/* Japan 4.9 GHz band */
+		if (channel >= 183 && channel <= 196)
+			return 4000 + channel * 5;
+	}
+
+	/* 6 GHz band (802.11ax WiFi 6E) - channels 1-233 */
+	if (band == AX_BAND || (channel >= 1 && channel <= 233 && band & AX_BAND)) {
+		return 5950 + channel * 5;
+	}
+
+	/* Fallback for unknown channels */
+	return (channel + 1000) * 5;
+}
+
+/*
+ * IEEE 802.11 Frequency to Channel conversion
+ * Supports 2.4GHz, 5GHz, and 6GHz bands
+ */
+int ieee80211_frequency_to_channel(int freq)
+{
+	/* 2.4 GHz band */
+	if (freq >= 2412 && freq <= 2472)
+		return (freq - 2407) / 5;
+	if (freq == 2484)
+		return 14;
+
+	/* 5 GHz band */
+	if (freq >= 5170 && freq <= 5825)
+		return (freq - 5000) / 5;
+
+	/* 4.9 GHz band (Japan) */
+	if (freq >= 4915 && freq <= 4980)
+		return (freq - 4000) / 5;
+
+	/* 6 GHz band (WiFi 6E) */
+	if (freq >= 5955 && freq <= 7115)
+		return (freq - 5950) / 5;
+
+	/* 60 GHz band (802.11ad/ay) */
+	if (freq >= 58320 && freq <= 70200)
+		return (freq - 56160) / 2160;
+
+	return 0;
+}
+
+/*
  * Goes to the next 802.11 channel.
  * This is mostly required for APs that hop channels, which usually hop between channels 1, 6, and 11.
  * We just hop channels until we successfully associate with the AP.
@@ -115,8 +182,12 @@ int read_iface_mac()
  */
 int next_channel()
 {
+/* 2.4 GHz channels (802.11b/g/n) */
 #define BG_CHANNELS	14, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13
-#define AN_CHANNELS	16, 34, 36, 38, 40, 42, 44, 46, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 149, 153, 157, 161, 165, 183, 184, 185, 187, 188, 189, 192, 196
+
+/* 5 GHz channels (802.11a/n/ac/ax) - Updated for modern standards */
+/* UNII-1: 36-48, UNII-2A: 52-64, UNII-2C (DFS): 100-144, UNII-3: 149-165, UNII-4: 169-177 */
+#define AN_CHANNELS	36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 144, 149, 153, 157, 161, 165, 169, 173, 177
 
         static int i;
         static const short bg_channels[] = {BG_CHANNELS};
@@ -168,51 +239,69 @@ int change_channel(int channel)
 }
 #else
 #ifdef LIBNL3
-/* took from the Aircrack-ng */
-static int ieee80211_channel_to_frequency(int chan)
-{
-	if (chan < 14) return 2407 + chan * 5;
-
-	if (chan == 14) return 2484;
-
-	/* FIXME: dot11ChannelStartingFactor (802.11-2007 17.3.8.3.2) */
-	return (chan + 1000) * 5;
-}
 
 int change_channel(int channel)
 {
-	int skfd = 0, ret_val = 0;
+	int ret_val = 0;
 	unsigned int freq;
+	struct nl_sock *sckt = NULL;
+	struct nl_msg *mesg = NULL;
+	int nl80211_id;
 
 	cprintf(VERBOSE, "[+] Switching %s to channel %d\n", get_iface(), channel);
 
-/* Modified example from the stackoverflow probably inspired by the Aircrack-ng code */
-/* https://stackoverflow.com/questions/21846965/set-wireless-channel-using-netlink-api */
-	freq = ieee80211_channel_to_frequency(channel);
-	/* Create the socket and connect to it. */
-	struct nl_sock *sckt = nl_socket_alloc();
-	genl_connect(sckt);
+	/* Convert channel to frequency using proper band detection */
+	freq = ieee80211_channel_to_frequency(channel, get_wifi_band());
 
-	/* Allocate a new message. */
-	struct nl_msg *mesg = nlmsg_alloc();
+	/* Create the socket and connect to it */
+	sckt = nl_socket_alloc();
+	if (!sckt) {
+		cprintf(CRITICAL, "[-] Failed to allocate netlink socket\n");
+		return 0;
+	}
 
-	/* Check /usr/include/linux/nl80211.h for a list of commands and attributes. */
-	enum nl80211_commands command = NL80211_CMD_SET_WIPHY;
+	if (genl_connect(sckt) < 0) {
+		cprintf(CRITICAL, "[-] Failed to connect to generic netlink\n");
+		goto cleanup;
+	}
 
-	/* Create the message so it will send a command to the nl80211 interface. */
-	genlmsg_put(mesg, 0, 0, genl_ctrl_resolve(sckt, "nl80211"), 0, 0, command, 0);
+	/* Resolve nl80211 interface */
+	nl80211_id = genl_ctrl_resolve(sckt, "nl80211");
+	if (nl80211_id < 0) {
+		cprintf(CRITICAL, "[-] nl80211 interface not found (driver may not support nl80211)\n");
+		goto cleanup;
+	}
 
-	/* Add specific attributes to change the frequency of the device. */
+	/* Allocate a new message */
+	mesg = nlmsg_alloc();
+	if (!mesg) {
+		cprintf(CRITICAL, "[-] Failed to allocate netlink message\n");
+		goto cleanup;
+	}
+
+	/* Create the message to set channel/frequency */
+	genlmsg_put(mesg, 0, 0, nl80211_id, 0, 0, NL80211_CMD_SET_WIPHY, 0);
+
+	/* Add interface index and frequency attributes */
 	NLA_PUT_U32(mesg, NL80211_ATTR_IFINDEX, if_nametoindex(get_iface()));
 	NLA_PUT_U32(mesg, NL80211_ATTR_WIPHY_FREQ, freq);
 
-	/* Finally send it and receive the amount of bytes sent. */
-	int ret = nl_send_auto_complete(sckt, mesg);
+	/* Send the message */
+	if (nl_send_auto_complete(sckt, mesg) < 0) {
+		cprintf(VERBOSE, "[!] Failed to send channel change request (freq=%d MHz)\n", freq);
+		goto nla_put_failure;
+	}
 
+	set_channel(channel);
 	ret_val = 1;
 
 nla_put_failure:
-	nlmsg_free(mesg);
+	if (mesg)
+		nlmsg_free(mesg);
+
+cleanup:
+	if (sckt)
+		nl_socket_free(sckt);
 
 	return ret_val;
 }

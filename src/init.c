@@ -32,8 +32,85 @@
  */
 
 #include "init.h"
+#include <unistd.h>
+#include <string.h>
 
-/* 
+/*
+ * Detect wireless driver from sysfs and warn about known problematic drivers.
+ * Returns driver name (caller should not free) or NULL if unknown.
+ */
+const char *detect_driver(const char *iface)
+{
+#ifdef __linux__
+	static char driver[64];
+	char path[256];
+	char linkbuf[256];
+	ssize_t len;
+
+	/* Read driver symlink from /sys/class/net/<iface>/device/driver */
+	snprintf(path, sizeof(path), "/sys/class/net/%s/device/driver", iface);
+	len = readlink(path, linkbuf, sizeof(linkbuf) - 1);
+	if (len > 0) {
+		linkbuf[len] = '\0';
+		/* Extract driver name from path (last component) */
+		char *drvname = strrchr(linkbuf, '/');
+		if (drvname) {
+			drvname++;
+			strncpy(driver, drvname, sizeof(driver) - 1);
+			driver[sizeof(driver) - 1] = '\0';
+			return driver;
+		}
+	}
+#endif
+	return NULL;
+}
+
+/*
+ * Print driver-specific warnings and recommendations
+ */
+void print_driver_warnings(const char *driver)
+{
+	if (!driver) return;
+
+	/* Realtek drivers - known for packet injection issues */
+	if (strstr(driver, "rtl") || strstr(driver, "8188") || strstr(driver, "8192") ||
+	    strstr(driver, "8812") || strstr(driver, "8821") || strstr(driver, "88x2")) {
+		cprintf(WARNING, "[!] Realtek driver detected (%s)\n", driver);
+		cprintf(WARNING, "[!] Realtek drivers may have packet injection issues. If attack fails:\n");
+		cprintf(WARNING, "[!]   - Try using -N (no NACK) option\n");
+		cprintf(WARNING, "[!]   - Consider using external USB adapter with Atheros chipset\n");
+	}
+	/* Broadcom drivers */
+	else if (strstr(driver, "brcm") || strstr(driver, "bcm") || strstr(driver, "wl")) {
+		cprintf(WARNING, "[!] Broadcom driver detected (%s)\n", driver);
+		cprintf(WARNING, "[!] Some Broadcom drivers require patching for monitor mode.\n");
+	}
+	/* Intel drivers */
+	else if (strstr(driver, "iwl") || strstr(driver, "iwm")) {
+		cprintf(INFO, "[+] Intel driver detected (%s)\n", driver);
+		cprintf(INFO, "[+] Intel drivers generally work well with reaver.\n");
+	}
+	/* Atheros/QCA drivers - best support */
+	else if (strstr(driver, "ath") || strstr(driver, "qca")) {
+		cprintf(INFO, "[+] Atheros/QCA driver detected (%s)\n", driver);
+		cprintf(INFO, "[+] Excellent driver support for WPS attacks.\n");
+	}
+	/* MediaTek drivers */
+	else if (strstr(driver, "mt7") || strstr(driver, "mt76")) {
+		cprintf(INFO, "[+] MediaTek driver detected (%s)\n", driver);
+		cprintf(INFO, "[+] MediaTek mt76 drivers have good modern kernel support.\n");
+	}
+	/* Ralink drivers */
+	else if (strstr(driver, "rt2") || strstr(driver, "rt3") || strstr(driver, "rt5") || strstr(driver, "rt61")) {
+		cprintf(INFO, "[+] Ralink driver detected (%s)\n", driver);
+		cprintf(WARNING, "[!] Consider using mt76 driver if available for better support.\n");
+	}
+	else {
+		cprintf(INFO, "[+] Driver: %s\n", driver);
+	}
+}
+
+/*
  * Generates a wps_config structure which is passed to wps_init() to create
  * an initial wps_data structure.
  */

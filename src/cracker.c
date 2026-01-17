@@ -111,8 +111,15 @@ void crack()
 
 	if(get_handle() == NULL) {
 		cprintf(CRITICAL, "[-] Failed to initialize interface '%s'\n", get_iface());
-		return;	
+		return;
 	}
+
+	/* Detect and display driver information with warnings */
+	const char *driver = detect_driver(get_iface());
+	if (driver) {
+		print_driver_warnings(driver);
+	}
+
 	generate_pins();
 
 	/* Restore any previously saved session */
@@ -125,18 +132,38 @@ void crack()
 	/* Convert BSSID to a string */
 	bssid = mac2str(get_bssid(), ':');
 
-	/* 
+	/*
 	 * We need to get some basic info from the AP, and also want to make sure the target AP
-	 * actually exists, so wait for a beacon packet 
+	 * actually exists, so wait for a beacon packet
 	 */
 	cprintf(INFO, "[+] Waiting for beacon from %s\n", bssid);
-	read_ap_beacon();
+	enum encryption_type enc = read_ap_beacon();
 	cprintf(INFO, "[+] Received beacon from %s\n", bssid);
 	char *vendor;
 	if((vendor = get_vendor_string(get_vendor())))
 		cprintf(INFO, "[+] Vendor: %s\n", vendor);
 
-	/* I'm fairly certian there's a reason I put this in twice. Can't remember what it was now though... */	
+	/* Display encryption type and warn about WPA3 */
+	switch(enc) {
+		case WPA3:
+			cprintf(CRITICAL, "[!] WARNING: WPA3/SAE detected - WPS is typically disabled on WPA3 networks\n");
+			cprintf(CRITICAL, "[!] WPA3 uses SAE (Simultaneous Authentication of Equals) which is not vulnerable to WPS attacks\n");
+			cprintf(WARNING, "[!] Attack may not succeed. Consider targeting WPA2 networks instead.\n");
+			break;
+		case WPA2:
+			cprintf(INFO, "[+] Encryption: WPA2\n");
+			break;
+		case WPA:
+			cprintf(INFO, "[+] Encryption: WPA\n");
+			break;
+		case WEP:
+			cprintf(INFO, "[+] Encryption: WEP\n");
+			break;
+		default:
+			break;
+	}
+
+	/* I'm fairly certian there's a reason I put this in twice. Can't remember what it was now though... */
 	if(get_max_pin_attempts() == -1)
 	{
 		cprintf(CRITICAL, "[X] ERROR: This device has been blacklisted and is not supported.\n");

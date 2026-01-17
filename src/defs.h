@@ -102,7 +102,9 @@ enum encryption_type
 {
         NONE,
         WEP,
-        WPA
+        WPA,
+        WPA2,
+        WPA3       /* WPA3/SAE - WPS not supported */
 };
 
 enum key_state

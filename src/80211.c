@@ -149,17 +149,19 @@ unsigned char* next_beacon(
 }
 
 
-/* 
+/*
  * Waits for a beacon packet from the target AP and populates the globule->ap_capabilities field.
  * This is used for obtaining the capabilities field and AP SSID.
+ * Returns the detected encryption type (NONE, WEP, WPA, WPA2, WPA3).
  */
-void read_ap_beacon()
+enum encryption_type read_ap_beacon()
 {
 	struct pcap_pkthdr header;
 	const unsigned char *packet;
 	const struct dot11_frame_header *frame_header;
 	const struct beacon_management_frame *beacon;
 	time_t start_time = time(NULL);
+	enum encryption_type enc = NONE;
 
 	set_ap_capability(0);
 
@@ -185,8 +187,13 @@ void read_ap_beacon()
 			change_channel(channel);
 			set_channel(channel);
 		}
+
+		/* Detect encryption type (WPA3 detection) */
+		enc = supported_encryption(packet, header.len);
 		break;
         }
+
+	return enc;
 }
 
 int freq_to_chan (uint16_t freq) {
@@ -472,9 +479,54 @@ static void associate(void)
 }
 
 
-/* Given a beacon / probe response packet, returns the reported encryption type (WPA, WEP, NONE)
-   THIS IS BROKE!!! DO NOT USE!!!
-*/
+/*
+ * Check if RSN IE contains WPA3/SAE AKM suite
+ * RSN IE structure: Version (2) + Group Cipher (4) + Pairwise Count (2) +
+ *                   Pairwise Ciphers (4*n) + AKM Count (2) + AKM Suites (4*m)
+ * SAE AKM = 00:0f:ac:08, FT-SAE = 00:0f:ac:09
+ */
+static int check_wpa3_akm(const unsigned char *rsn_ie, size_t len)
+{
+	size_t offset = 0;
+	uint16_t count, i;
+
+	if (len < 8) return 0;  /* Minimum RSN IE size */
+
+	/* Skip Version (2 bytes) + Group Cipher Suite (4 bytes) */
+	offset = 6;
+	if (offset + 2 > len) return 0;
+
+	/* Pairwise Cipher Suite Count */
+	count = rsn_ie[offset] | (rsn_ie[offset + 1] << 8);
+	offset += 2 + (count * 4);  /* Skip pairwise cipher suites */
+	if (offset + 2 > len) return 0;
+
+	/* AKM Suite Count */
+	count = rsn_ie[offset] | (rsn_ie[offset + 1] << 8);
+	offset += 2;
+
+	/* Check each AKM suite */
+	for (i = 0; i < count && offset + 4 <= len; i++) {
+		/* Check for SAE (00:0f:ac:08) or FT-SAE (00:0f:ac:09) */
+		if (rsn_ie[offset] == 0x00 && rsn_ie[offset + 1] == 0x0f &&
+		    rsn_ie[offset + 2] == 0xac &&
+		    (rsn_ie[offset + 3] == 0x08 || rsn_ie[offset + 3] == 0x09)) {
+			return 1;  /* WPA3-SAE detected */
+		}
+		/* Check for OWE (00:0f:ac:12) */
+		if (rsn_ie[offset] == 0x00 && rsn_ie[offset + 1] == 0x0f &&
+		    rsn_ie[offset + 2] == 0xac && rsn_ie[offset + 3] == 0x12) {
+			return 1;  /* OWE (Enhanced Open) detected */
+		}
+		offset += 4;
+	}
+
+	return 0;
+}
+
+/* Given a beacon / probe response packet, returns the reported encryption type
+ * Supports: NONE, WEP, WPA, WPA2, WPA3
+ */
 enum encryption_type supported_encryption(const unsigned char *packet, size_t len)
 {
 	enum encryption_type enc = NONE;
@@ -489,7 +541,7 @@ enum encryption_type supported_encryption(const unsigned char *packet, size_t le
 		size_t rt_header_len = end_le16toh(rt_header->len);
 		beacon = (struct beacon_management_frame *) (packet + rt_header_len + sizeof(struct dot11_frame_header));
 		offset = tag_offset = rt_header_len + sizeof(struct dot11_frame_header) + sizeof(struct beacon_management_frame);
-		
+
 		tag_len = len - tag_offset;
 		tag_data = (const unsigned char *) (packet + tag_offset);
 
@@ -497,14 +549,21 @@ enum encryption_type supported_encryption(const unsigned char *packet, size_t le
 		{
 			enc = WEP;
 
+			/* Check for RSN IE (WPA2/WPA3) */
 			tag_data = parse_ie_data(tag_data, tag_len, (uint8_t) RSN_TAG_NUMBER, &vlen, &voff);
 			if(tag_data && vlen > 0)
 			{
-				enc = WPA;
+				/* Check if WPA3/SAE is present in AKM suites */
+				if (check_wpa3_akm(tag_data, vlen)) {
+					enc = WPA3;
+				} else {
+					enc = WPA2;
+				}
 				free((void *) tag_data);
 			}
 			else
 			{
+				/* Check for WPA IE (vendor specific) */
 				while(offset < len)
 				{
 					tag_len = len - offset;

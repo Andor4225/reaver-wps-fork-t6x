@@ -34,11 +34,17 @@
 #ifndef IFACE_H
 #define IFACE_H
 
-#define BG_BAND			(1 << 0)
-#define AN_BAND			(1 << 1)
+/* Wi-Fi band definitions for 802.11 a/b/g/n/ac/ax */
+#define BG_BAND			(1 << 0)  /* 2.4 GHz (802.11b/g/n) */
+#define AN_BAND			(1 << 1)  /* 5 GHz (802.11a/n/ac/ax) */
+#define AX_BAND			(1 << 2)  /* 6 GHz (802.11ax/WiFi 6E) - future use */
 
 int read_iface_mac();
 int next_channel();
 int change_channel(int channel);
+
+/* Frequency/channel conversion for modern standards */
+int ieee80211_channel_to_frequency(int channel, int band);
+int ieee80211_frequency_to_channel(int freq);
 
 #endif

@@ -44,4 +44,8 @@
 struct wps_data *initialize_wps_data();
 pcap_t *capture_init(char *capture_source);
 
+/* Driver detection and warnings */
+const char *detect_driver(const char *iface);
+void print_driver_warnings(const char *driver);
+
 #endif
