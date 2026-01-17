@@ -33,6 +33,8 @@
 
 #include "cracker.h"
 #include "pixie.h"
+#include "iface.h"
+#include "80211.h"
 #include "utils/vendor.h"
 #include "utils/endianness.h"
 
@@ -213,6 +215,17 @@ void crack()
 			   use it to update the router's timeout */
 			locked_status = is_wps_locked(&header, packet);
 			extract_uptime(beacon);
+			/* Check if AP changed channels and follow if enabled */
+			if(get_follow_channel() && !get_fixed_channel()) {
+				int beacon_channel = parse_beacon_tags(packet, header.len);
+				if(beacon_channel > 0 && beacon_channel != get_channel()) {
+					cprintf(WARNING, "[!] AP changed channel: %d -> %d\n",
+						get_channel(), beacon_channel);
+					change_channel(beacon_channel);
+					set_channel(beacon_channel);
+					cprintf(INFO, "[+] Followed AP to channel %d\n", beacon_channel);
+				}
+			}
 			if(locked_status == 1 && get_ignore_locks() == 0) {
 				cprintf(WARNING, "[!] WARNING: Detected AP rate limiting, waiting %d seconds before re-checking\n", get_lock_delay());
 				pcap_sleep(get_lock_delay());

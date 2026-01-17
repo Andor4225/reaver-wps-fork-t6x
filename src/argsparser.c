@@ -50,7 +50,7 @@ int process_arguments(int argc, char **argv)
 	int long_opt_index = 0;
 	char bssid[MAC_ADDR_LEN] = { 0 };
 	char mac[MAC_ADDR_LEN] = { 0 };
-	char *short_options = "b:e:m:i:t:d:c:T:x:r:g:l:p:s:C:O:KZA5ELfnqvDShwN6JFuM";
+	char *short_options = "b:e:m:i:t:d:c:T:x:r:g:l:p:s:C:O:KZA5ELfnqvDShwN6JFuMW";
 	struct option long_options[] = {
 		{ "pixie-dust", no_argument, NULL, 'K' },
 		{ "interface", required_argument, NULL, 'i' },
@@ -85,6 +85,7 @@ int process_arguments(int argc, char **argv)
 		{ "ignore-fcs", no_argument, NULL, 'F' },
 		{ "output-file", required_argument, NULL, 'O'},
 		{ "mac-changer", no_argument, NULL, 'M' },
+		{ "follow", no_argument, NULL, 'W' },
 		{ 0, 0, 0, 0 }
 	};
 
@@ -205,6 +206,9 @@ int process_arguments(int argc, char **argv)
 				break;
 			case 'M':
 				set_mac_changer(1);
+				break;
+			case 'W':
+				set_follow_channel(1);
 				break;
                         default:
                                 ret_val = EXIT_FAILURE;

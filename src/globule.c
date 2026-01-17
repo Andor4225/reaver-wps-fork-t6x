@@ -665,3 +665,12 @@ void set_output_fd(int fd) {
 	globule->output_fd = fd;
 	if (fd != -1) pcapfile_write_header(fd);
 }
+
+void set_follow_channel(int value)
+{
+	globule->follow_channel = value;
+}
+int get_follow_channel(void)
+{
+	return globule->follow_channel;
+}

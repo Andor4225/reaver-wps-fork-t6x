@@ -182,6 +182,7 @@ static int reaver_usage(char *prog_name)
 	fprintf(stderr, "\t-Z                              Run pixiedust attack\n");
         fprintf(stderr, "\t-O, --output-file=<filename>    Write packets of interest into pcap file\n");
         fprintf(stderr, "\t-M, --mac-changer               Change the last digit of the MAC Address for each pin try [False]\n");
+        fprintf(stderr, "\t-W, --follow                    Follow AP if it changes channels during attack [False]\n");
 
         fprintf(stderr, "\nExample:\n\t%s -i wlan0mon -b 00:90:4C:C1:AC:21 -vv\n\n", prog_name);
 

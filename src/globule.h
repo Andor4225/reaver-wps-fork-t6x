@@ -160,6 +160,8 @@ struct globals
                                          */
     int mac_changer;        /* Use MAC changer */
 
+    int follow_channel;     /* Follow AP channel changes during attack */
+
 };
 
 extern struct globals *globule;
@@ -274,4 +276,6 @@ void set_output_fd(int fd);
 int get_output_fd(void);
 void set_mac_changer(int value);
 int get_mac_changer(void);
+void set_follow_channel(int value);
+int get_follow_channel(void);
 #endif
